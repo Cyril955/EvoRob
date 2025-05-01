@@ -91,7 +91,7 @@ def main():
     plt.xlabel('Generation')
     plt.ylabel('Fitness')
     plt.savefig('Ackley_f.pdf')
-    #plt.close()
+    plt.close()
 
     # %% Change the World
     # TODO: Implement your world
