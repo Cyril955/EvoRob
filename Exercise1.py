@@ -1,3 +1,4 @@
+from src.EA.ES import ES, ES_opts
 from src.EA.CMAES import CMAES, CMAES_opts
 from src.world.robot.controllers import MLP
 from src.utils.Filesys import get_project_root
@@ -33,13 +34,14 @@ class PPO_controller():
 
 
 class CheetahWorld(World):
+
     def __init__(self):
         self.env = gym.make(ENV_NAME)
-        action_space = self.env.action_space.shape[0]  # https://gymnasium.farama.org/environments/mujoco/half_cheetah/#action-space
-        state_space = self.env.observation_space.shape[0]  # https://gymnasium.farama.org/environments/mujoco/half_cheetah/#observation-space
+        action_space = self.env.action_space.shape[0] # https://gymnasium.farama.org/environments/mujoco/half_cheetah/#action-space
+        state_space = self.env.observation_space.shape[0] #https://gymnasium.farama.org/environments/mujoco/half_cheetah/#observation-space
         self.controller = MLP.NNController(state_space, action_space)
         self.dt = self.env.get_wrapper_attr('dt')
-        self.n_params = 391   # TODO
+        self.n_params = self.controller.n_params
 
     def geno2pheno(self, genotype):
         self.controller.geno2pheno(genotype)
@@ -52,7 +54,7 @@ class CheetahWorld(World):
         self.geno2pheno(genotype)
 
         rewards_list = []
-        observations, info = self.env.reset(seed=42)
+        observations, info = self.env.reset()
         for step in range(n_sim_steps):
             action = self.controller.get_action(observations)
             observations, rewards, terminated, truncated, info = self.env.step(action)
@@ -99,31 +101,31 @@ def main():
     n_parameters = world.n_params
 
     # TODO: improve the ES settings
-    CMAES_opts["min"] = -10
-    CMAES_opts["max"] = 10
-    CMAES_opts["num_parents"] = 100
-    CMAES_opts["num_generations"] = 100
-    CMAES_opts["mutation_sigma"] = 2.5
+    ES_opts["min"] = -1
+    ES_opts["max"] = 1
+    ES_opts["num_parents"] = 100
+    ES_opts["num_generations"] = 100
+    ES_opts["mutation_sigma"] = .5
 
     population_size = 50
 
     results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'CMAES')
-    ea = CMAES(population_size, n_parameters, CMAES_opts, results_dir)
+    ea = ES(population_size, n_parameters, ES_opts, results_dir)
 
     run_EA(ea, world)
 
     # %% Make video of best behaviour
-    best_individual = np.load(os.path.join(results_dir, f"{CMAES_opts['num_generations']-1}", "x_best.npy"))
+    best_individual = np.load(os.path.join(results_dir, "99", "x_best.npy"))
     world.controller.geno2pheno(best_individual)
 
-    generate_best_individual_video(world.controller)
+    generate_best_individual_video(world.controller, 'EA_best.mp4')
 
     # %% Compare with PPO
     env = gym.make(ENV_NAME)
     ppo = PPO("MlpPolicy", env, device=torch.device('cpu'))
     trial_time = 50  # seconds in simulation
     n_sim_steps = int(trial_time / world.dt)
-    n_total_steps = 10000  # TODO
+    n_total_steps = population_size * ES_opts["num_generations"] * n_sim_steps
     ppo.learn(total_timesteps=n_total_steps)
     ppo_controller = PPO_controller(ppo)
 
