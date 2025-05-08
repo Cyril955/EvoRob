@@ -35,10 +35,11 @@ class AntWorld(World):
         self.n_params = self.n_weights + 8
         self.world_file = os.path.join(ROOT_DIR, "AntEnv.xml")
 
-        self.joint_limits = [[-30, 30], [30, 70],
+        self.joint_limits = [[-30, 30], [30, 70], # orientation andd limits of the joints -> can be part of genotype
                              [-30, 30], [-70, -30],
                              [-30, 30], [-70, -30],
                              [-30, 30], [30, 70], ]
+        
         self.joint_axis = [[0, 0, 1], [-1, 1, 0],
                            [0, 0, 1], [1, 1, 0],
                            [0, 0, 1], [-1, 1, 0],
@@ -95,20 +96,20 @@ class AntWorld(World):
                             back_right_toe_xyz,
                             ])
 
-        # define the type of connections [FIXED ARCHITECTURE]
+        # define the type of connections [FIXED ARCHITECTURE] between the points just defined above
         connectivity_mat = np.array(
-            [[150, np.inf, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 150, np.inf, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 150, np.inf, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 150, np.inf, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 150, np.inf, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 150, np.inf, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ]
+            [[150, np.inf, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 150, np.inf, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 150, np.inf, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 150, np.inf, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 150, np.inf, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 150, np.inf, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
         )
         return points, connectivity_mat
 
@@ -153,8 +154,11 @@ class AntWorld(World):
             # Store rewards for active environments only
             rewards_full[step, done_mask == False] = rewards[done_mask == False]
 
-            multi_obj_reward = np.array([infos[...], -infos[...]]).T  # TODO
+            # print(infos)
+
+            multi_obj_reward = np.array([infos['reward_forward'], -infos['cfrc_cost']]).T # check dynamic walker -> reward is custom
             multi_obj_rewards_full[step, done_mask == False] = multi_obj_reward[done_mask == False]
+
 
             # Update the done mask based on the "done" and "truncated" flags
             done_mask = done_mask | dones | truncated
@@ -247,32 +251,32 @@ def main():
     genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters, 945 NN weights
     visualise_individual(genotype)
 
-    # %% Optimise single-objective
-    world = AntWorld()
-    n_parameters = world.n_params
+    # # %% Optimise single-objective
+    # world = AntWorld()
+    # n_parameters = world.n_params
 
-    population_size = 250
-    CMAES_opts["min"] = -1
-    CMAES_opts["max"] = 1
-    CMAES_opts["num_parents"] = 100
-    CMAES_opts["num_generations"] = 100
-    CMAES_opts["mutation_sigma"] = 0.33
+    # population_size = 250
+    # CMAES_opts["min"] = -1
+    # CMAES_opts["max"] = 1
+    # CMAES_opts["num_parents"] = 100
+    # CMAES_opts["num_generations"] = 100
+    # CMAES_opts["mutation_sigma"] = 0.33
 
-    results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'single')
-    ea_single = CMAES(population_size, n_parameters, CMAES_opts, results_dir)
+    # results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'single')
+    # ea_single = CMAES(population_size, n_parameters, CMAES_opts, results_dir)
 
-    run_EA_single(ea_single, world)
+    # run_EA_single(ea_single, world)
 
     # %% Optimise multi-objective
     # TODO implement NSGAII
     world = AntWorld()
     n_parameters = world.n_params
 
-    population_size = 250
+    population_size = 50
     NSGA_opts["min"] = -1
     NSGA_opts["max"] = 1
     NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 100
+    NSGA_opts["num_generations"] = 50
     NSGA_opts["mutation_prob"] = 0.3
     NSGA_opts["crossover_prob"] = 0.5
 
@@ -283,7 +287,7 @@ def main():
 
     # %% visualise
     # TODO: Make a video of the best individual, and plot the fitness curve.
-    best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts["num_generations"]-1}", "x_best.npy"))
+    best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
 
     points, connectivity_mat = world.geno2pheno(best_individual)
     robot = AntRobot(points, connectivity_mat, world.joint_limits, world.joint_axis, verbose=False)
