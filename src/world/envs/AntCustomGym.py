@@ -29,6 +29,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         robot_path: str,
         frame_skip: int = 5,
         default_camera_config: Dict[str, float] = DEFAULT_CAMERA_CONFIG,
+        upward_reward_weight: float = 1,
         forward_reward_weight: float = 1,
         ctrl_cost_weight: float = 0.5,
         cfrc_cost_weight: float = 5e-4,
@@ -49,6 +50,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             xml_file_path,
             frame_skip,
             default_camera_config,
+            upward_reward_weight,
             forward_reward_weight,
             ctrl_cost_weight,
             cfrc_cost_weight,
@@ -59,6 +61,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             **kwargs,
         )
         self._forward_reward_weight = forward_reward_weight
+        self._upward_reward_weight = upward_reward_weight
         self._ctrl_cost_weight = ctrl_cost_weight
         self._cfrc_cost_weight = cfrc_cost_weight
 
@@ -117,24 +120,30 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
     def step(self, action):
         xy_position_before = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_before = self.data.body(self._main_body).xpos[2].copy()  # for climber
+
         if self.body_ids is not None:
             self.apply_force()
         self.do_simulation(action, self.frame_skip)
+
         xy_position_after = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_after = self.data.body(self._main_body).xpos[2].copy()   # for climber
 
         xy_velocity = (xy_position_after - xy_position_before) / self.dt
+        z_velocity = (z_position_after - z_position_before) / self.dt       # for climber
         x_velocity, y_velocity = xy_velocity
 
         forward_reward = x_velocity * self._forward_reward_weight
+        upward_reward = z_velocity * self._upward_reward_weight             # for climber
         healthy_reward = 1
         ctrl_cost = np.linalg.norm(action)**2 * self._ctrl_cost_weight
         cfrc_cost = np.linalg.norm( self.data.cfrc_ext[1:])**2 * self._cfrc_cost_weight
 
-        #TODO
         reward = healthy_reward + forward_reward -ctrl_cost -cfrc_cost
         observation = self._get_obs()
 
         info = {
+            "upward_reward": upward_reward,
             "reward_forward": forward_reward,
             "healthy_reward": healthy_reward,
             "ctrl_cost": ctrl_cost,

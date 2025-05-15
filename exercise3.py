@@ -33,13 +33,15 @@ class AntWorld(World):
         self.n_weights = self.controller.n_params
 
         self.n_params = self.n_weights + 8
-        self.world_file = os.path.join(ROOT_DIR, "AntEnv.xml")
+        self.world_file = os.path.join(ROOT_DIR, "AntEnv_tilted_rocky.xml")
 
         self.joint_limits = [[-30, 30], [30, 70], # orientation andd limits of the joints -> can be part of genotype
                              [-30, 30], [-70, -30],
                              [-30, 30], [-70, -30],
                              [-30, 30], [30, 70], ]
         
+        # limits of lenghth of the legs and liments orientation of the joints
+              
         self.joint_axis = [[0, 0, 1], [-1, 1, 0],
                            [0, 0, 1], [1, 1, 0],
                            [0, 0, 1], [-1, 1, 0],
@@ -156,7 +158,7 @@ class AntWorld(World):
 
             # print(infos)
 
-            multi_obj_reward = np.array([infos['reward_forward'], -infos['cfrc_cost']]).T # check dynamic walker -> reward is custom
+            multi_obj_reward = np.array([infos['upward_reward'], -infos['cfrc_cost']]).T # check dynamic walker -> reward is custom
             multi_obj_rewards_full[step, done_mask == False] = multi_obj_reward[done_mask == False]
 
 
@@ -272,11 +274,11 @@ def main():
     world = AntWorld()
     n_parameters = world.n_params
 
-    population_size = 50
+    population_size = 500
     NSGA_opts["min"] = -1
     NSGA_opts["max"] = 1
     NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 50
+    NSGA_opts["num_generations"] = 500
     NSGA_opts["mutation_prob"] = 0.3
     NSGA_opts["crossover_prob"] = 0.5
 
