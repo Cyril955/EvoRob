@@ -166,16 +166,17 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
             terminated = True
         
-        print(self.data.body(self._main_body).xpos[2])
-
+        #print(self.data.body(self._main_body).xpos[2])
+        # print xquat
+        print(self.data.body(self._main_body).xquat)
         # Limit if it falls down the hill (z position) 
         if self.data.body(self._main_body).xpos[2] < 0:       
             terminated = True
 
-        # Limit if it falls on its back
+        # # Limit if it falls on its back
         def is_180_deg_rotation_xy(xquat):
             w, x, y, z = xquat
-            tol_rad = math.radians(40)
+            tol_rad = math.radians(90)
 
             # compute rotation angle
             w_clamped = max(-1.0, min(1.0, w))
@@ -197,7 +198,42 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
                 return True
 
             return False
-        if is_180_deg_rotation_xy(self.data.body(self._main_body).xquat):       
+        
+        import math
+
+        def fall_down(xquat, tol=5):
+            w, x, y, z = xquat
+
+            # Roll (X-axis rotation)
+            t0 = 2.0 * (w * x + y * z)
+            t1 = 1.0 - 2.0 * (x * x + y * y)
+            roll_rad = math.atan2(t0, t1)
+
+            # Pitch (Y-axis rotation)
+            t2 = 2.0 * (w * y - z * x)
+            t2 = max(-1.0, min(1.0, t2))  # clamp to avoid domain errors
+            pitch_rad = math.asin(t2)
+
+            # Yaw (Z-axis rotation)
+            t3 = 2.0 * (w * z + x * y)
+            t4 = 1.0 - 2.0 * (y * y + z * z)
+            yaw_rad = math.atan2(t3, t4)
+
+            # Convert to degrees
+            roll_deg  = math.degrees(roll_rad)
+            pitch_deg = math.degrees(pitch_rad)
+            yaw_deg   = math.degrees(yaw_rad)
+
+            #if roll_deg or pitch_deg or yaw_deg are < abs(120) return false else return true
+            if abs(roll_deg) > 180-tol or abs(pitch_deg) > 90 - tol:
+                # print("roll_deg: ", roll_deg)
+                # print("pitch_deg: ", pitch_deg)
+                # print("yaw_deg: ", yaw_deg)
+                return True
+            return False
+
+        if (fall_down(self.data.body(self._main_body).xquat)):     
+            print("Ant fell on its back")  
             terminated = True
 
         # Limit if there is a huge value in the observation
