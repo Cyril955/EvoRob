@@ -166,3 +166,5 @@ cython_debug/
 
 # Virtual environments
 /env_evorob
+/evo
+/mujoco-3.3.2-windows-x86_64
