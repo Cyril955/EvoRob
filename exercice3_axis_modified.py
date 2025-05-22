@@ -6,10 +6,12 @@ from src.world.robot.morphology.AntCustomRobot import AntRobot
 from src.utils.Filesys import get_project_root
 from gymnasium.vector import AsyncVectorEnv
 
+import matplotlib.pyplot as plt
 import xml.etree.ElementTree as xml
 import gymnasium as gym
 import numpy as np
 import os
+
 
 """ Large programming projects are often modularised in different components. 
     In the upcoming exercise(s) we will (re)build an evolutionary pipeline for robot evolution in MuJoCo.
@@ -19,17 +21,8 @@ import os
 """
 
 ROOT_DIR = get_project_root()
-ENV_NAME = 'Ant_custom'
+ENV_NAME = 'Ant_custom' 
 
-NUMBER_OF_LEGS = 8  # Ant has 8 legs
-INITIAL_AXIS_ORIENTATION = np.array([[0, 0, 1], [-1, 1, 0],
-                                    [0, 0, 1], [1, 1, 0],
-                                    [0, 0, 1], [-1, 1, 0],
-                                    [0, 0, 1], [1, 1, 0]])  # initial joint axes for each leg
-INITIAL_JOINT_LIMITS = np.array([[-30, 30], [30, 70],
-                                    [-30, 30], [-70, -30],
-                                    [-30, 30], [-70, -30],
-                                    [-30, 30], [30, 70]])  # initial joint limits for each leg
 
 class AntWorld(World):
     def __init__(self, ):
@@ -40,11 +33,11 @@ class AntWorld(World):
         self.n_steps = 1000
         self.controller = MLP.NNController(state_space, action_space)
         self.n_weights = self.controller.n_params
-        # controller weights + body parameters + joint limits + joint axes
-        self.n_params = self.n_weights + NUMBER_OF_LEGS + NUMBER_OF_LEGS * 2 + NUMBER_OF_LEGS * 3 
+
+        self.n_params = self.n_weights + 8 + 24 # 8 body parameters + 24 joint axis + 945 NN weights
         self.world_file = os.path.join(ROOT_DIR, "AntEnv.xml")
 
-        self.max_joint_limits = [[-30, 30], [30, 70], 
+        self.joint_limits = [[-30, 30], [30, 70], # orientation andd limits of the joints -> can be part of genotype
                              [-30, 30], [-70, -30],
                              [-30, 30], [-70, -30],
                              [-30, 30], [30, 70], ]
@@ -55,72 +48,23 @@ class AntWorld(World):
         #                    [0, 0, 1], [1, 1, 0],
         #                    ]
 
-# each joint in genotype raw_lo and raw_hi are in [-1, 1] range
-# we defined a variable for the maximum joint limits : max_joint_limits
-# We map each gene from its native range [-1, +1] into the physical range: 
-# ex : l = (raw_lo + 1) / 2 * (hi_phys - lo_phys) + lo_phys 
-# if raw_lo = -1 -> l = lo_phys, raw_lo = 1 -> l = hi_phys, raw_lo = 0 -> l = (lo_phys + hi_phys) / 2
-# verify that the mapped values guarantee lo < hi, if not, sort them
-    
     def geno2pheno(self, genotype):
-        # --- extract and split genotype ---
-        n_body    = 8
-        n_joints  = 8
-        n_jlim    = n_joints * 2        # 16 values for joint limits
-        n_axes    = n_joints * 3        # 24 values for joint axes
-
-        # total genes = body + joint-limits + joint-axes + controller weights
-        expected_len = n_body + n_jlim + n_axes + self.n_weights
-        assert len(genotype) == expected_len, \
-            f"genotype must be {expected_len} long"
-
-        # slices
-        body_raw        = genotype[0              : n_body]
-        joint_raw       = genotype[n_body         : n_body + n_jlim]
-        axis_raw        = genotype[n_body + n_jlim : n_body + n_jlim + n_axes]
-        control_weights = genotype[-self.n_weights : ]
-
-        # --- compute body parameters ---
-        body_params = (body_raw + 1.5) / 5 * 0.5 + 0.1
-        #print(f"Body parameters: {body_params}")
-
-        # --- reshape axes and print ---
-        joint_axis = axis_raw.reshape(n_joints, 3)
-        #print(f"Joint axis (from genotype):\n{joint_axis}")
-
-        # --- build joint‐limits table with linear mapping + guaranteed lo<hi ---
-        joint_limits = np.zeros((n_joints, 2))
-        for i in range(n_joints):
-            lo_phys, hi_phys = self.max_joint_limits[i]
-
-            # raw values in [-1,1]
-            raw_lo = joint_raw[2*i]
-            raw_hi = joint_raw[2*i + 1]
-
-            # map each into the [lo_phys, hi_phys] interval
-            mapped_lo = lo_phys + (raw_lo + 1) * 0.5 * (hi_phys - lo_phys)
-            mapped_hi = lo_phys + (raw_hi + 1) * 0.5 * (hi_phys - lo_phys)
-
-            # sort so that mapped_lo ≤ mapped_hi
-            lo, hi = sorted([mapped_lo, mapped_hi])
-            joint_limits[i, 0] = lo
-            joint_limits[i, 1] = hi
-            # verify they still respect the global bounds
-            assert lo  >= lo_phys and lo  <= hi_phys, \
-                f"Joint {i} lower {lo:.3f} outside [{lo_phys}, {hi_phys}]"
-            assert hi  >= lo_phys and hi  <= hi_phys, \
-                f"Joint {i} upper {hi:.3f} outside [{lo_phys}, {hi_phys}]"
-
-        #print(f"Joint limits:\n{joint_limits}")
-
-
-        # --- sanity checks ---
-        assert body_params.shape    == (n_body,)
-        assert joint_limits.shape   == (n_joints, 2)
-        assert control_weights.size == self.n_weights
-        assert joint_axis.shape == (n_joints, 3)
+        # add joints axis to genotype
+        body_raw    = genotype[0:8]
+        body_params = (body_raw + 1.5) / 5 * 0.5 + 0.1 # corresponds to index 0 to 7
+        #print(body_params)
+        # extract joint axis from genotype : size = 8*3 = 24
+        # joint-axis raw (8×3 = 24)
+        axis_raw = genotype[8:8+24].reshape(8,3)
+        # scale from [-1,1]
+        joint_axis = axis_raw / np.linalg.norm(axis_raw, axis=1, keepdims=True)
+        #print(joint_axis)
+        control_weights = genotype[8+24:] # corresponds to index 32 to 976
+        assert body_params.shape == (8,)
+        assert joint_axis.shape == (8,3)
+        assert len(control_weights) == self.n_weights
         assert not np.any(body_params <= 0)
-
+        
 
         self.controller.geno2pheno(control_weights)
 
@@ -180,12 +124,12 @@ class AntWorld(World):
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
         )
-        return points, connectivity_mat, joint_limits, joint_axis
+        return points, connectivity_mat, joint_axis
 
     def evaluate_individual(self, genotype):
-        points, connectivity_mat, joint_limits, joint_axis = self.geno2pheno(genotype)
+        points, connectivity_mat, joint_axis = self.geno2pheno(genotype)
 
-        robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+        robot = AntRobot(points, connectivity_mat, self.joint_limits, joint_axis, verbose=False) # modify self.joint_axis -> joint_axis
         robot.xml = robot.define_robot()
         robot.write_xml()
 
@@ -243,6 +187,8 @@ class AntWorld(World):
 
 def run_EA_single(ea_single, world):
     for gen in range(ea_single.n_gen):
+        # print generation number
+        print(f"Generation {gen + 1}/{ea_single.n_gen}")
         pop = ea_single.ask()
         fitnesses_gen = np.empty(len(pop))
         for index, genotype in enumerate(pop):
@@ -250,16 +196,25 @@ def run_EA_single(ea_single, world):
             fitnesses_gen[index] = fit_ind
         ea_single.tell(pop, fitnesses_gen)
 
+def plot_fitness(fitness_history):
+    plt.figure()
+    plt.plot(fitness_history)
+    plt.xlabel('Generation')
+    plt.ylabel('Best Fitness')
+    plt.title('Fitness over Generations')
+    plt.grid(True)
+    plt.show()
 
 def run_EA_multi(ea_multi, world):
     for gen in range(ea_multi.n_gen):
-        print(f"Generation {gen+1}/{ea_multi.n_gen}")
         pop = ea_multi.ask()
+        print(f"Generation {gen + 1}/{ea_multi.n_gen}")
         fitnesses_gen = np.empty((len(pop), 2))
         for index, genotype in enumerate(pop):
             _, fit_ind = world.evaluate_individual(genotype)
             fitnesses_gen[index] = fit_ind
         ea_multi.tell(pop, fitnesses_gen)
+    plot_fitness(fitnesses_gen)    
 
 
 def generate_best_individual_video(world, video_name: str = 'EvoRob3_video.mp4'):
@@ -286,8 +241,8 @@ def generate_best_individual_video(world, video_name: str = 'EvoRob3_video.mp4')
 
 def visualise_individual(genotype):
     world = AntWorld()
-    points, connectivity_mat, joint_limits, joint_axis = world.geno2pheno(genotype)
-    robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+    points, connectivity_mat, joint_axis = world.geno2pheno(genotype)
+    robot = AntRobot(points, connectivity_mat, world.joint_limits, joint_axis, verbose=False)
     robot.xml = robot.define_robot()
     robot.write_xml()
 
@@ -316,13 +271,13 @@ def visualise_individual(genotype):
     print(np.sum(rewards_list))
 
 
+
 def main():
     # %% Understanding the world
-    genotype = np.random.uniform(-1, 1, 993)  # 8 body parameters, 16 joint limits, 24 axis orientations, 945 NN weights
-    # set joint limits to a initial values -> INITIAL_JOINT_LIMITS
-    #genotype[8:24] = INITIAL_JOINT_LIMITS.flatten()  # set joint limits
-    # set joint axes to initial values -> INITIAL_AXIS_ORIENTATION
-    genotype[24:48] = INITIAL_AXIS_ORIENTATION.flatten()  # set joint axes
+    genotype = np.random.uniform(-1, 1, 977)  # 8 body parameters, 945 NN weights, 24 joint axis
+    # set all joint axis to 1
+    genotype[8:8+24] = 1.0  # set joint axis to 1
+    
     visualise_individual(genotype)
 
     # # %% Optimise single-objective
@@ -341,16 +296,16 @@ def main():
 
     # run_EA_single(ea_single, world)
 
-    # %% Optimise multi-objective
-    # TODO implement NSGAII
+    # # %% Optimise multi-objective
+    # # TODO implement NSGAII
     world = AntWorld()
     n_parameters = world.n_params
 
-    population_size = 10
+    population_size = 500
     NSGA_opts["min"] = -1
     NSGA_opts["max"] = 1
     NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 1
+    NSGA_opts["num_generations"] = 200
     NSGA_opts["mutation_prob"] = 0.3
     NSGA_opts["crossover_prob"] = 0.5
 
@@ -363,8 +318,8 @@ def main():
     # TODO: Make a video of the best individual, and plot the fitness curve.
     best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
 
-    points, connectivity_mat, joint_limits, joint_axis = world.geno2pheno(best_individual)
-    robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+    points, connectivity_mat, joint_axis = world.geno2pheno(best_individual)
+    robot = AntRobot(points, connectivity_mat, world.joint_limits, joint_axis, verbose=False)
     robot.xml = robot.define_robot()
     robot.write_xml()
 
@@ -378,9 +333,6 @@ def main():
         f.write(world_xml)
 
     generate_best_individual_video(world)
-
-    #print genotype : body parameters and joint limits only
-    print("Best individual genotype:", best_individual[:48])  # first 8 body parameters + 16 joint limits + 24 axis orientations
 
 
 if __name__ == '__main__':

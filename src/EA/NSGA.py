@@ -16,7 +16,7 @@ NSGA_opts = {
 }
 
 
-class NSGAII_sol():
+class NSGAII():
     def __init__(self, n_pop, n_params, opts: Dict = NSGA_opts, output_dir: str = "./results/NSGAII"):
         """
         Evolutionary Strategy [COMPLETE]

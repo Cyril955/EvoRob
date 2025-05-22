@@ -21,15 +21,10 @@ import os
 ROOT_DIR = get_project_root()
 ENV_NAME = 'Ant_custom'
 
-NUMBER_OF_LEGS = 8  # Ant has 8 legs
-INITIAL_AXIS_ORIENTATION = np.array([[0, 0, 1], [-1, 1, 0],
-                                    [0, 0, 1], [1, 1, 0],
-                                    [0, 0, 1], [-1, 1, 0],
-                                    [0, 0, 1], [1, 1, 0]])  # initial joint axes for each leg
-INITIAL_JOINT_LIMITS = np.array([[-30, 30], [30, 70],
-                                    [-30, 30], [-70, -30],
-                                    [-30, 30], [-70, -30],
-                                    [-30, 30], [30, 70]])  # initial joint limits for each leg
+START_JOINT_LIMITS =  [[-30, 30], [30, 70], # orientation andd limits of the joints -> can be part of genotype
+                             [-30, 30], [-70, -30],
+                             [-30, 30], [-70, -30],
+                             [-30, 30], [30, 70], ]
 
 class AntWorld(World):
     def __init__(self, ):
@@ -40,20 +35,20 @@ class AntWorld(World):
         self.n_steps = 1000
         self.controller = MLP.NNController(state_space, action_space)
         self.n_weights = self.controller.n_params
-        # controller weights + body parameters + joint limits + joint axes
-        self.n_params = self.n_weights + NUMBER_OF_LEGS + NUMBER_OF_LEGS * 2 + NUMBER_OF_LEGS * 3 
+
+        self.n_params = self.n_weights + 8 + 16
         self.world_file = os.path.join(ROOT_DIR, "AntEnv.xml")
 
-        self.max_joint_limits = [[-30, 30], [30, 70], 
+        self.max_joint_limits = [[-30, 30], [30, 70], # orientation andd limits of the joints -> can be part of genotype
                              [-30, 30], [-70, -30],
                              [-30, 30], [-70, -30],
                              [-30, 30], [30, 70], ]
         
-        # self.joint_axis = [[0, 0, 1], [-1, 1, 0],
-        #                    [0, 0, 1], [1, 1, 0],
-        #                    [0, 0, 1], [-1, 1, 0],
-        #                    [0, 0, 1], [1, 1, 0],
-        #                    ]
+        self.joint_axis = [[0, 0, 1], [-1, 1, 0],
+                           [0, 0, 1], [1, 1, 0],
+                           [0, 0, 1], [-1, 1, 0],
+                           [0, 0, 1], [1, 1, 0],
+                           ]
 
 # each joint in genotype raw_lo and raw_hi are in [-1, 1] range
 # we defined a variable for the maximum joint limits : max_joint_limits
@@ -64,29 +59,20 @@ class AntWorld(World):
     
     def geno2pheno(self, genotype):
         # --- extract and split genotype ---
-        n_body    = 8
-        n_joints  = 8
-        n_jlim    = n_joints * 2        # 16 values for joint limits
-        n_axes    = n_joints * 3        # 24 values for joint axes
+        n_body   = 8
+        n_joints = 8          # there are 8 joints, not 16
+        n_jlim   = n_joints * 2  # 16 values total
 
-        # total genes = body + joint-limits + joint-axes + controller weights
-        expected_len = n_body + n_jlim + n_axes + self.n_weights
-        assert len(genotype) == expected_len, \
-            f"genotype must be {expected_len} long"
+        assert len(genotype) == n_body + n_jlim + self.n_weights, \
+            f"genotype must be {n_body + n_jlim + self.n_weights} long"
 
-        # slices
-        body_raw        = genotype[0              : n_body]
-        joint_raw       = genotype[n_body         : n_body + n_jlim]
-        axis_raw        = genotype[n_body + n_jlim : n_body + n_jlim + n_axes]
-        control_weights = genotype[-self.n_weights : ]
+        body_raw        = genotype[:n_body]
+        joint_raw       = genotype[n_body:n_body + n_jlim]
+        control_weights = genotype[-self.n_weights:]  # always take from the end
 
         # --- compute body parameters ---
         body_params = (body_raw + 1.5) / 5 * 0.5 + 0.1
         #print(f"Body parameters: {body_params}")
-
-        # --- reshape axes and print ---
-        joint_axis = axis_raw.reshape(n_joints, 3)
-        #print(f"Joint axis (from genotype):\n{joint_axis}")
 
         # --- build joint‐limits table with linear mapping + guaranteed lo<hi ---
         joint_limits = np.zeros((n_joints, 2))
@@ -105,22 +91,21 @@ class AntWorld(World):
             lo, hi = sorted([mapped_lo, mapped_hi])
             joint_limits[i, 0] = lo
             joint_limits[i, 1] = hi
+
             # verify they still respect the global bounds
             assert lo  >= lo_phys and lo  <= hi_phys, \
                 f"Joint {i} lower {lo:.3f} outside [{lo_phys}, {hi_phys}]"
             assert hi  >= lo_phys and hi  <= hi_phys, \
                 f"Joint {i} upper {hi:.3f} outside [{lo_phys}, {hi_phys}]"
 
-        #print(f"Joint limits:\n{joint_limits}")
+        print(f"Joint limits:\n{joint_limits}")
 
 
         # --- sanity checks ---
         assert body_params.shape    == (n_body,)
         assert joint_limits.shape   == (n_joints, 2)
         assert control_weights.size == self.n_weights
-        assert joint_axis.shape == (n_joints, 3)
         assert not np.any(body_params <= 0)
-
 
         self.controller.geno2pheno(control_weights)
 
@@ -180,12 +165,12 @@ class AntWorld(World):
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 150, np.inf],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
         )
-        return points, connectivity_mat, joint_limits, joint_axis
+        return points, connectivity_mat, joint_limits
 
     def evaluate_individual(self, genotype):
-        points, connectivity_mat, joint_limits, joint_axis = self.geno2pheno(genotype)
+        points, connectivity_mat, joint_limits = self.geno2pheno(genotype)
 
-        robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+        robot = AntRobot(points, connectivity_mat, joint_limits, self.joint_axis, verbose=False)
         robot.xml = robot.define_robot()
         robot.write_xml()
 
@@ -286,8 +271,8 @@ def generate_best_individual_video(world, video_name: str = 'EvoRob3_video.mp4')
 
 def visualise_individual(genotype):
     world = AntWorld()
-    points, connectivity_mat, joint_limits, joint_axis = world.geno2pheno(genotype)
-    robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+    points, connectivity_mat, joint_limits = world.geno2pheno(genotype)
+    robot = AntRobot(points, connectivity_mat, joint_limits, world.joint_axis, verbose=False)
     robot.xml = robot.define_robot()
     robot.write_xml()
 
@@ -318,11 +303,8 @@ def visualise_individual(genotype):
 
 def main():
     # %% Understanding the world
-    genotype = np.random.uniform(-1, 1, 993)  # 8 body parameters, 16 joint limits, 24 axis orientations, 945 NN weights
-    # set joint limits to a initial values -> INITIAL_JOINT_LIMITS
-    #genotype[8:24] = INITIAL_JOINT_LIMITS.flatten()  # set joint limits
-    # set joint axes to initial values -> INITIAL_AXIS_ORIENTATION
-    genotype[24:48] = INITIAL_AXIS_ORIENTATION.flatten()  # set joint axes
+    genotype = np.random.uniform(-1, 1, 969)  # 8 body parameters, 16 joint limits, 945 NN weights
+    # set joint limits to a initial values
     visualise_individual(genotype)
 
     # # %% Optimise single-objective
@@ -363,8 +345,8 @@ def main():
     # TODO: Make a video of the best individual, and plot the fitness curve.
     best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
 
-    points, connectivity_mat, joint_limits, joint_axis = world.geno2pheno(best_individual)
-    robot = AntRobot(points, connectivity_mat, joint_limits, joint_axis, verbose=False)
+    points, connectivity_mat, joint_limits = world.geno2pheno(best_individual)
+    robot = AntRobot(points, connectivity_mat, joint_limits, world.joint_axis, verbose=False)
     robot.xml = robot.define_robot()
     robot.write_xml()
 
@@ -380,7 +362,7 @@ def main():
     generate_best_individual_video(world)
 
     #print genotype : body parameters and joint limits only
-    print("Best individual genotype:", best_individual[:48])  # first 8 body parameters + 16 joint limits + 24 axis orientations
+    print("Best individual genotype:", best_individual[:24])  # first 8 body parameters + 16 joint limits
 
 
 if __name__ == '__main__':

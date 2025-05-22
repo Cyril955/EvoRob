@@ -117,6 +117,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
     def step(self, action):
         xy_position_before = self.data.body(self._main_body).xpos[:2].copy()
+        print(self.data.body(self._main_body).xpos)
         if self.body_ids is not None:
             self.apply_force()
         self.do_simulation(action, self.frame_skip)
