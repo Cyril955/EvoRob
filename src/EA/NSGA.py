@@ -1,9 +1,7 @@
 import copy
 import os
 from typing import Dict
-
 import numpy as np
-
 from src.utils.Filesys import search_file_list
 
 NSGA_opts = {
@@ -56,11 +54,11 @@ class NSGAII():
         new_population = np.clip(new_population, self.min, self.max)
         return new_population
 
+
     def tell(self, solutions, function_values, save_checkpoint=True):
         parents_population, parents_fitness = self.sort_and_select_parents(
             solutions, function_values, self.n_parents
         )
-
 
         #% Some bookkeeping
         self.full_fitness.append(function_values)
@@ -74,19 +72,17 @@ class NSGAII():
             self.f_best_so_far = function_values[best_index]
             self.x_best_so_far = solutions[best_index]
 
-        if self.current_gen % 5 == 0:
-            print(f"Best fitness in generation {self.current_gen}: {self.f_best_so_far}\n"
-                  f"Mean pop fitness: {self.f.mean()} +- {self.f.std()}\n"
-                  )
+        print(f"Best fitness in generation {self.current_gen}: {self.f_best_so_far}\n"
+              f"Mean population fitness: {self.f.mean()} +- {self.f.std()}\n")
 
         if save_checkpoint:
             self.save_checkpoint()
         self.current_gen += 1
 
 
-
     def initialise_x0(self):
         return np.random.uniform(low=self.min, high=self.max, size=(self.n_pop, self.n_params))
+
 
     def create_children(self, population_size):
         new_offspring = np.empty((population_size, self.n_params))
@@ -114,7 +110,6 @@ class NSGAII():
         return mutated_population
 
 
-
     def sort_and_select_parents(self, solutions, function_values, n_parents):
         fronts, population_rank = self.fast_nondominated_sort(function_values)
 
@@ -130,6 +125,7 @@ class NSGAII():
         return all(x >= y for x, y in zip(individual, other_individual)) and any(
             x > y for x, y in zip(individual, other_individual)
         )
+
 
     def fast_nondominated_sort(self, fitness):
         domination_lists = [[] for _ in range(len(fitness))]
@@ -185,6 +181,7 @@ class NSGAII():
 
         return pareto_fronts, population_rank
 
+
     def save_checkpoint(self):
         curr_gen_path = os.path.join(self.directory_name, str(self.current_gen))
         os.makedirs(curr_gen_path, exist_ok=True)
@@ -194,6 +191,7 @@ class NSGAII():
         np.save(os.path.join(curr_gen_path, 'x_best'), np.array(self.x_best_so_far))
         np.save(os.path.join(curr_gen_path, 'x'), np.array(self.x))
         np.save(os.path.join(curr_gen_path, 'f'), np.array(self.f))
+
 
     def load_checkpoint(self):
         dir_path = search_file_list(self.directory_name, 'f_best.npy')
