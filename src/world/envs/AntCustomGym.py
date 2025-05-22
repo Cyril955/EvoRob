@@ -173,35 +173,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         if self.data.body(self._main_body).xpos[2] < 0:       
             terminated = True
 
-        # # Limit if it falls on its back
-        def is_180_deg_rotation_xy(xquat):
-            w, x, y, z = xquat
-            tol_rad = math.radians(90)
-
-            # compute rotation angle
-            w_clamped = max(-1.0, min(1.0, w))
-            angle = 2 * math.acos(w_clamped)
-            if abs(angle - math.pi) > tol_rad:
-                return False
-
-            # compute rotation axis
-            sin_half = math.sin(angle / 2)
-            if abs(sin_half) < 1e-6:
-                return False
-            ax, ay, az = x / sin_half, y / sin_half, z / sin_half
-
-            # check X-axis (±1, 0, 0)
-            if abs(abs(ax) - 1.0) < 1e-2 and abs(ay) < 1e-2 and abs(az) < 1e-2:
-                return True
-            # check Y-axis (0, ±1, 0)
-            if abs(abs(ay) - 1.0) < 1e-2 and abs(ax) < 1e-2 and abs(az) < 1e-2:
-                return True
-
-            return False
-        
-        import math
-
-        def fall_down(xquat, tol=5):
+        def fall_down_detection(xquat, tol=5):
             w, x, y, z = xquat
 
             # Roll (X-axis rotation)
@@ -232,7 +204,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
                 return True
             return False
 
-        if (fall_down(self.data.body(self._main_body).xquat)):     
+        if (fall_down_detection(self.data.body(self._main_body).xquat)):     
             print("Ant fell on its back")  
             terminated = True
 
