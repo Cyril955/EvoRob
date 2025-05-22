@@ -2,6 +2,7 @@ from os import path
 from typing import Dict, Union
 
 import numpy as np
+import math
 from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.spaces import Box
@@ -154,15 +155,50 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             "x_velocity": x_velocity,
             "y_velocity": y_velocity,
         }
+
+        # TERMINATION CONDITIONS
         terminated = False
-        # Check for NaN, Inf, or huge values
+
+        # Limit the acceleration to a reasonable range
         qacc = self.data.qacc
         if np.any(np.isnan(qacc)) or np.any(np.isinf(qacc)) or np.any(np.abs(qacc) > 1e6):
             DOF = np.argwhere((np.isnan(qacc)) + (np.isinf(qacc)) + (np.abs(qacc) > 1e6)).squeeze()[0]
             print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
             terminated = True
-        if self.data.qpos[2] < 0.2 or self.data.qpos[2] > 1.0:
+
+        # Limit if it falls down the hill (z position) 
+        if self.data.body(self._main_body).xpos[2] < -0.5:       
             terminated = True
+
+        # Limit if it falls on its back
+        def is_180_deg_rotation_xy(xquat):
+            w, x, y, z = xquat
+            tol_rad = math.radians(40)
+
+            # compute rotation angle
+            w_clamped = max(-1.0, min(1.0, w))
+            angle = 2 * math.acos(w_clamped)
+            if abs(angle - math.pi) > tol_rad:
+                return False
+
+            # compute rotation axis
+            sin_half = math.sin(angle / 2)
+            if abs(sin_half) < 1e-6:
+                return False
+            ax, ay, az = x / sin_half, y / sin_half, z / sin_half
+
+            # check X-axis (±1, 0, 0)
+            if abs(abs(ax) - 1.0) < 1e-2 and abs(ay) < 1e-2 and abs(az) < 1e-2:
+                return True
+            # check Y-axis (0, ±1, 0)
+            if abs(abs(ay) - 1.0) < 1e-2 and abs(ax) < 1e-2 and abs(az) < 1e-2:
+                return True
+
+            return False
+        if is_180_deg_rotation_xy(self.data.body(self._main_body).xquat):       
+            terminated = True
+
+        # Limit if there is a huge value in the observation
         if np.isinf(observation).any():
             terminated = True
 

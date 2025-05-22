@@ -246,25 +246,25 @@ def visualise_individual(genotype):
 def main():
     print("Starting the experiment at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"),"\n")
 
-    # # Understanding the world
-    # genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters, 945 NN weights of the controller
-    # visualise_individual(genotype)
+    # Understanding the world
+    genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters, 945 NN weights of the controller
+    visualise_individual(genotype)
 
-    # # Optimise multi-objective
-    # world = AntWorld()
-    # n_parameters = world.n_params
+    # Optimise multi-objective
+    world = AntWorld()
+    n_parameters = world.n_params
 
-    # population_size = 10
-    # NSGA_opts["min"] = -1
-    # NSGA_opts["max"] = 1
-    # NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 5
-    # NSGA_opts["mutation_prob"] = 0.3
-    # NSGA_opts["crossover_prob"] = 0.5
+    population_size = 5 # GOOD VALUE: 30
+    NSGA_opts["min"] = -1
+    NSGA_opts["max"] = 1
+    NSGA_opts["num_parents"] = population_size
+    NSGA_opts["num_generations"] = 5  # GOOD VALUE: 100 
+    NSGA_opts["mutation_prob"] = 0.3    # NOT TOUCH
+    NSGA_opts["crossover_prob"] = 0.5   # NOT TOUCH
     results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'multi')
-    # ea_multi_obj = NSGAII(population_size, n_parameters, NSGA_opts, results_dir)
+    ea_multi_obj = NSGAII(population_size, n_parameters, NSGA_opts, results_dir)
 
-    # run_EA_multi(ea_multi_obj, world)
+    run_EA_multi(ea_multi_obj, world)
 
     # Results
     best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy")) # best individual genotype
@@ -306,23 +306,23 @@ def main():
     #for i in range(NSGA_opts['num_generations']-1):
         
 
-    #best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
+    best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
     
     # Defining the best individual in the world for visualisation
-    # points, connectivity_mat = world.geno2pheno(best_individual)
-    # robot = AntRobot(points, connectivity_mat, world.joint_limits, world.joint_axis, verbose=False)
-    # robot.xml = robot.define_robot()
-    # robot.write_xml()
+    points, connectivity_mat = world.geno2pheno(best_individual)
+    robot = AntRobot(points, connectivity_mat, world.joint_limits, world.joint_axis, verbose=False)
+    robot.xml = robot.define_robot()
+    robot.write_xml()
 
-    # world_xml = xml.parse(os.path.join(ROOT_DIR, 'src', 'world', 'robot', 'assets', "ant_world.xml"))
-    # robot_env = world_xml.getroot()
+    world_xml = xml.parse(os.path.join(ROOT_DIR, 'src', 'world', 'robot', 'assets', "ant_world.xml"))
+    robot_env = world_xml.getroot()
 
-    # robot_env.append(xml.Element("include", attrib={"file": "AntRobot.xml"}))
-    # world_xml = xml.tostring(robot_env, encoding='unicode')
-    # with open(world.world_file, "w") as f:
-    #     f.write(world_xml)
+    robot_env.append(xml.Element("include", attrib={"file": "AntRobot.xml"}))
+    world_xml = xml.tostring(robot_env, encoding='unicode')
+    with open(world.world_file, "w") as f:
+        f.write(world_xml)
 
-    # generate_best_individual_video(world)
+    generate_best_individual_video(world)
 
 
 if __name__ == '__main__':
