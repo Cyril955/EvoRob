@@ -2,6 +2,7 @@ from os import path
 from typing import Dict, Union
 
 import numpy as np
+import math
 from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.spaces import Box
@@ -29,6 +30,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         robot_path: str,
         frame_skip: int = 5,
         default_camera_config: Dict[str, float] = DEFAULT_CAMERA_CONFIG,
+        upward_reward_weight: float = 1,
         forward_reward_weight: float = 1,
         ctrl_cost_weight: float = 0.5,
         cfrc_cost_weight: float = 5e-4,
@@ -49,6 +51,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             xml_file_path,
             frame_skip,
             default_camera_config,
+            upward_reward_weight,
             forward_reward_weight,
             ctrl_cost_weight,
             cfrc_cost_weight,
@@ -59,6 +62,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             **kwargs,
         )
         self._forward_reward_weight = forward_reward_weight
+        self._upward_reward_weight = upward_reward_weight
         self._ctrl_cost_weight = ctrl_cost_weight
         self._cfrc_cost_weight = cfrc_cost_weight
 
@@ -117,24 +121,30 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
     def step(self, action):
         xy_position_before = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_before = self.data.body(self._main_body).xpos[2].copy()  # for climber
+
         if self.body_ids is not None:
             self.apply_force()
         self.do_simulation(action, self.frame_skip)
+
         xy_position_after = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_after = self.data.body(self._main_body).xpos[2].copy()   # for climber
 
         xy_velocity = (xy_position_after - xy_position_before) / self.dt
+        z_velocity = (z_position_after - z_position_before) / self.dt       # for climber
         x_velocity, y_velocity = xy_velocity
 
         forward_reward = x_velocity * self._forward_reward_weight
+        upward_reward = z_velocity * self._upward_reward_weight             # for climber
         healthy_reward = 1
         ctrl_cost = np.linalg.norm(action)**2 * self._ctrl_cost_weight
         cfrc_cost = np.linalg.norm( self.data.cfrc_ext[1:])**2 * self._cfrc_cost_weight
 
-        #TODO
         reward = healthy_reward + forward_reward -ctrl_cost -cfrc_cost
         observation = self._get_obs()
 
         info = {
+            "upward_reward": upward_reward,
             "reward_forward": forward_reward,
             "healthy_reward": healthy_reward,
             "ctrl_cost": ctrl_cost,
@@ -145,15 +155,52 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             "x_velocity": x_velocity,
             "y_velocity": y_velocity,
         }
+
+        # TERMINATION CONDITIONS
         terminated = False
-        # Check for NaN, Inf, or huge values
+
+        # Limit the acceleration to a reasonable range
         qacc = self.data.qacc
         if np.any(np.isnan(qacc)) or np.any(np.isinf(qacc)) or np.any(np.abs(qacc) > 1e6):
             DOF = np.argwhere((np.isnan(qacc)) + (np.isinf(qacc)) + (np.abs(qacc) > 1e6)).squeeze()[0]
             print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
             terminated = True
-        if self.data.qpos[2] < 0.2 or self.data.qpos[2] > 1.0:
+        
+        print(self.data.body(self._main_body).xpos[2])
+
+        # Limit if it falls down the hill (z position) 
+        if self.data.body(self._main_body).xpos[2] < 0:       
             terminated = True
+
+        # Limit if it falls on its back
+        def is_180_deg_rotation_xy(xquat):
+            w, x, y, z = xquat
+            tol_rad = math.radians(40)
+
+            # compute rotation angle
+            w_clamped = max(-1.0, min(1.0, w))
+            angle = 2 * math.acos(w_clamped)
+            if abs(angle - math.pi) > tol_rad:
+                return False
+
+            # compute rotation axis
+            sin_half = math.sin(angle / 2)
+            if abs(sin_half) < 1e-6:
+                return False
+            ax, ay, az = x / sin_half, y / sin_half, z / sin_half
+
+            # check X-axis (±1, 0, 0)
+            if abs(abs(ax) - 1.0) < 1e-2 and abs(ay) < 1e-2 and abs(az) < 1e-2:
+                return True
+            # check Y-axis (0, ±1, 0)
+            if abs(abs(ay) - 1.0) < 1e-2 and abs(ax) < 1e-2 and abs(az) < 1e-2:
+                return True
+
+            return False
+        if is_180_deg_rotation_xy(self.data.body(self._main_body).xquat):       
+            terminated = True
+
+        # Limit if there is a huge value in the observation
         if np.isinf(observation).any():
             terminated = True
 
