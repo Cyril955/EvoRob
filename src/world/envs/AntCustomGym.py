@@ -165,9 +165,11 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             DOF = np.argwhere((np.isnan(qacc)) + (np.isinf(qacc)) + (np.abs(qacc) > 1e6)).squeeze()[0]
             print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
             terminated = True
+        
+        print(self.data.body(self._main_body).xpos[2])
 
         # Limit if it falls down the hill (z position) 
-        if self.data.body(self._main_body).xpos[2] < -0.5:       
+        if self.data.body(self._main_body).xpos[2] < 0:       
             terminated = True
 
         # Limit if it falls on its back
