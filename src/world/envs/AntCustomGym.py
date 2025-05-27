@@ -199,7 +199,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
         if (fall_down_detection(self.data.body(self._main_body).xquat)):     
             # print("Ant fell on its back")  
-            ctrl_cost += 300                     # FIXME
+            ctrl_cost += 150                     # FIXME
             terminated = True
 
         # Limit if there is a huge value in the observation
