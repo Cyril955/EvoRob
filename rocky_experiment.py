@@ -46,7 +46,7 @@ class AntWorld(World):
 
     def geno2pheno(self, genotype):
         control_weights = genotype[-self.n_weights:]
-        body_params = (genotype[:-self.n_weights] + 1.5) / 5 * 0.5 + 0.1 # limits of the legs length
+        body_params = (genotype[:-self.n_weights] + 1.5) / 5 * 0.5 + 0.1 # limits of the legs length between 0.15 and 0.35 m
         assert len(body_params) == 8
         assert len(control_weights) == self.n_weights
         assert not np.any(body_params <= 0)
