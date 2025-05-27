@@ -13,6 +13,8 @@ import datetime
 from datetime import datetime
 import matplotlib.pyplot as plt
 
+import rocky_exp_plotting_results 
+
 
 ROOT_DIR = get_project_root()
 ENV_NAME = 'Ant_custom'
@@ -153,7 +155,7 @@ class AntWorld(World):
 
             # print(infos)
 
-            multi_obj_reward = np.array([infos['upward_reward'], -infos['cfrc_cost']]).T             # multi-objective reward
+            multi_obj_reward = np.array([infos['reward_forward'], -infos['cfrc_cost']]).T             # multi-objective reward
             multi_obj_rewards_full[step, done_mask == False] = multi_obj_reward[done_mask == False]
 
             # Update the done mask based on the "done" and "truncated" flags
@@ -188,7 +190,7 @@ def run_EA_multi(ea_multi, world):
         ea_multi.tell(pop, fitnesses_gen)
 
 
-def generate_best_individual_video(world, video_name: str = 'Best_individual_rocky_exp.mp4'):
+def generate_best_individual_video(world, video_name: str = 'rocky_exp_best_individual.mp4'):
     env = gym.make(ENV_NAME,
                    robot_path=world.world_file,
                    render_mode="rgb_array")
@@ -244,85 +246,50 @@ def visualise_individual(genotype):
 
 
 def main():
-    print("Starting the experiment at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"),"\n")
+    t_start = datetime.now()
+    print("Starting the experiment at", t_start.strftime("%Y-%m-%d %H:%M:%S"),"\n")
 
-    # Understanding the world
-    genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters, 945 NN weights of the controller
-    visualise_individual(genotype)
+    # Create the genotype and visualise it
+    genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters + 945 NN weights of the controller
 
-    # Optimise multi-objective
+    # Initialise the evolutionary algorithm
     world = AntWorld()
     n_parameters = world.n_params
-
-    population_size = 5 # GOOD VALUE: 30
+    population_size = 20                                                        # GOOD VALUE: 30
     NSGA_opts["min"] = -1
     NSGA_opts["max"] = 1
     NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 5  # GOOD VALUE: 100 
-    NSGA_opts["mutation_prob"] = 0.3    # NOT TOUCH
-    NSGA_opts["crossover_prob"] = 0.5   # NOT TOUCH
+    NSGA_opts["num_generations"] = 50                                           # GOOD VALUE: 100 
+    NSGA_opts["mutation_prob"] = 0.3                                            # NOT TOUCH
+    NSGA_opts["crossover_prob"] = 0.5                                           # NOT TOUCH
     results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'multi')
     ea_multi_obj = NSGAII(population_size, n_parameters, NSGA_opts, results_dir)
 
+    # Run the evolution
     run_EA_multi(ea_multi_obj, world)
 
-    # Results
-    best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy")) # best individual genotype
-    # print("Best individual:", best_individual.shape)
+    # Experiment finished
+    t_end = datetime.now()
+    print("Experiment took", t_end - t_start,"\n")
 
-    # Pareto front for generation 0
-    fitnesses_0 = np.load(os.path.join(results_dir, f"{0}", "f.npy"))     # fitnesses of the population for both objectives
-    best_fitnesses_0 = np.load(os.path.join(results_dir, f"{0}", "f_best.npy")) # best individual fitness for both objectives
-    plt.figure()
-    plt.plot(fitnesses_0[:, 0], fitnesses_0[:, 1], 'o', label='Population at generation 0')
-    plt.plot(best_fitnesses_0[0], best_fitnesses_0[1], 'ro', label='Best individual at generation 0')
-    plt.savefig("pareto_front_gen_0.png")
+    # Plot the results
+    rocky_exp_plotting_results.create_figures(results_dir, NSGA_opts["num_generations"], population_size)
 
-    # Fitnesses for all generations
-    fitnesses = np.zeros((NSGA_opts['num_generations'], 2))
-    gen_index = np.arange(1, NSGA_opts['num_generations']+1)
+    # Generate the video of the best individual
+    # Choose individual for video
+    # target = np.array([117.5, -159])
+    # threshold = 5.0  # Set your desired tolerance
+    # distances = np.linalg.norm(np.load(os.path.join(results_dir, "full_f.npy")) - target, axis=-1)
+    # indices = np.argwhere(distances <= threshold)
+    # gen_ind = indices[0][0]
+    # ind = indices[0][1]
+    # genotypes_of_gen_ind = np.load(os.path.join(results_dir, f"{gen_ind}", "x.npy"))
+    # individual = genotypes_of_gen_ind[ind]
 
-    for i in range(NSGA_opts['num_generations']):
-        fitnesses[i][:] = np.load(os.path.join(results_dir, f"{i}", "f_best.npy"))
-    
-    print(fitnesses)
-    print(gen_index)
+    # Or best individual
+    individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy")) # best individual genotype    
 
-    print(fitnesses[:, 0])
-
-
-
-    plt.figure()
-    plt.plot(gen_index, fitnesses[:, 0], 'o-', label='Best individual fitness for objective 1')
-    plt.plot(gen_index, fitnesses[:, 1], 'o-', label='Best individual fitness for objective 2')
-    plt.xlabel('Generation')
-    plt.ylabel('Fitness')
-    plt.title('Best individual fitness for all generations')
-    plt.legend()
-    plt.savefig("best_individual_fitness.png")
-    plt.show()
-
-
-    #for i in range(NSGA_opts['num_generations']-1):
-        
-
-    best_individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy"))
-    
-    # Defining the best individual in the world for visualisation
-    points, connectivity_mat = world.geno2pheno(best_individual)
-    robot = AntRobot(points, connectivity_mat, world.joint_limits, world.joint_axis, verbose=False)
-    robot.xml = robot.define_robot()
-    robot.write_xml()
-
-    world_xml = xml.parse(os.path.join(ROOT_DIR, 'src', 'world', 'robot', 'assets', "ant_world.xml"))
-    robot_env = world_xml.getroot()
-
-    robot_env.append(xml.Element("include", attrib={"file": "AntRobot.xml"}))
-    world_xml = xml.tostring(robot_env, encoding='unicode')
-    with open(world.world_file, "w") as f:
-        f.write(world_xml)
-
-    generate_best_individual_video(world)
+    visualise_individual(individual)
 
 
 if __name__ == '__main__':

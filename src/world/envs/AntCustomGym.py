@@ -32,6 +32,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         default_camera_config: Dict[str, float] = DEFAULT_CAMERA_CONFIG,
         upward_reward_weight: float = 1,
         forward_reward_weight: float = 1,
+        slope_reward_weight: float = 1,  # for climber
         ctrl_cost_weight: float = 0.5,
         cfrc_cost_weight: float = 5e-4,
         main_body: Union[int, str] = 1,
@@ -53,6 +54,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             default_camera_config,
             upward_reward_weight,
             forward_reward_weight,
+            slope_reward_weight,
             ctrl_cost_weight,
             cfrc_cost_weight,
             main_body,
@@ -63,7 +65,8 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         )
         self._forward_reward_weight = forward_reward_weight
         self._upward_reward_weight = upward_reward_weight
-        self._ctrl_cost_weight = ctrl_cost_weight
+        self._slope_reward_weight = slope_reward_weight     # for climber
+        self._ctrl_cost_weight = ctrl_cost_weight   
         self._cfrc_cost_weight = cfrc_cost_weight
 
         self._main_body = main_body
@@ -133,28 +136,16 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         xy_velocity = (xy_position_after - xy_position_before) / self.dt
         z_velocity = (z_position_after - z_position_before) / self.dt       # for climber
         x_velocity, y_velocity = xy_velocity
-
+        v_slope = np.sqrt(x_velocity**2 + z_velocity**2)
+    
         forward_reward = x_velocity * self._forward_reward_weight
         upward_reward = z_velocity * self._upward_reward_weight             # for climber
+        slope_reward = v_slope * self._slope_reward_weight             # for climber
         healthy_reward = 1
         ctrl_cost = np.linalg.norm(action)**2 * self._ctrl_cost_weight
-        cfrc_cost = np.linalg.norm( self.data.cfrc_ext[1:])**2 * self._cfrc_cost_weight
+        cfrc_cost = np.linalg.norm(self.data.cfrc_ext[1:])**2 * self._cfrc_cost_weight
 
-        reward = healthy_reward + forward_reward -ctrl_cost -cfrc_cost
         observation = self._get_obs()
-
-        info = {
-            "upward_reward": upward_reward,
-            "reward_forward": forward_reward,
-            "healthy_reward": healthy_reward,
-            "ctrl_cost": ctrl_cost,
-            "cfrc_cost": cfrc_cost,
-            "x_position": self.data.qpos[0],
-            "y_position": self.data.qpos[1],
-            "distance_from_origin": np.linalg.norm(self.data.qpos[0:2], ord=2),
-            "x_velocity": x_velocity,
-            "y_velocity": y_velocity,
-        }
 
         # TERMINATION CONDITIONS
         terminated = False
@@ -166,13 +157,15 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
             terminated = True
         
-        #print(self.data.body(self._main_body).xpos[2])
-        # print xquat
-        print(self.data.body(self._main_body).xquat)
-        # Limit if it falls down the hill (z position) 
-        if self.data.body(self._main_body).xpos[2] < 0:       
+        # For tilted ground
+        # if self.data.body(self._main_body).xpos[2] < 0:       
+        #     terminated = True
+        
+        # For flat ground
+        if self.data.qpos[2] < 0.2 or self.data.qpos[2] > 1.0:
             terminated = True
 
+        # Limit if falls on its back
         def fall_down_detection(xquat, tol=5):
             w, x, y, z = xquat
 
@@ -205,7 +198,8 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             return False
 
         if (fall_down_detection(self.data.body(self._main_body).xquat)):     
-            print("Ant fell on its back")  
+            # print("Ant fell on its back")  
+            ctrl_cost += 300                     # FIXME
             terminated = True
 
         # Limit if there is a huge value in the observation
@@ -216,6 +210,22 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
         if self.render_mode == "human":
             self.render()
+        
+        reward = healthy_reward + forward_reward -ctrl_cost -cfrc_cost
+
+        info = {
+            "upward_reward": upward_reward,
+            "reward_forward": forward_reward,
+            "healthy_reward": healthy_reward,
+            "ctrl_cost": ctrl_cost,
+            "cfrc_cost": cfrc_cost,
+            "x_position": self.data.qpos[0],
+            "y_position": self.data.qpos[1],
+            "distance_from_origin": np.linalg.norm(self.data.qpos[0:2], ord=2),
+            "x_velocity": x_velocity,
+            "y_velocity": y_velocity,
+        }
+
         return observation, reward, terminated, False, info
 
     def _get_obs(self):
