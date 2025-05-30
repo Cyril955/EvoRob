@@ -254,11 +254,11 @@ def main():
     # Initialise the evolutionary algorithm
     world = AntWorld()
     n_parameters = world.n_params
-    population_size = 20                                                        # GOOD VALUE: 30
+    population_size = 200                                                       # GOOD VALUE: 30
     NSGA_opts["min"] = -1
     NSGA_opts["max"] = 1
     NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 50                                           # GOOD VALUE: 100 
+    NSGA_opts["num_generations"] = 50                                          # GOOD VALUE: 100 
     NSGA_opts["mutation_prob"] = 0.3                                            # NOT TOUCH
     NSGA_opts["crossover_prob"] = 0.5                                           # NOT TOUCH
     results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'multi')
