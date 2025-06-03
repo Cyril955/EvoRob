@@ -153,7 +153,7 @@ class AntWorld(World):
             # Store rewards for active environments only
             rewards_full[step, done_mask == False] = rewards[done_mask == False]
 
-            # print(infos)            
+            # print(infos)
             multi_obj_reward = np.array([infos['reward_forward'], -infos['ctrl_cost']]).T              # multi-objective reward
             multi_obj_rewards_full[step, done_mask == False] = multi_obj_reward[done_mask == False]
 
@@ -245,51 +245,45 @@ def visualise_individual(genotype):
 
 
 def main():
-    t_start = datetime.now()
-    print("Starting the experiment at", t_start.strftime("%Y-%m-%d %H:%M:%S"),"\n")
+    # t_start = datetime.now()
+    # print("Starting the experiment at", t_start.strftime("%Y-%m-%d %H:%M:%S"),"\n")
 
-    # Create the genotype and visualise it
-    genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters + 945 NN weights of the controller
+    # # Create the genotype and visualise it
+    # genotype = np.random.uniform(-1, 1, 953)  # 8 body parameters + 945 NN weights of the controller
 
-    # Initialise the evolutionary algorithm
-    world = AntWorld()
-    n_parameters = world.n_params
-    population_size = 200                                                       # GOOD VALUE: 30
-    NSGA_opts["min"] = -1
-    NSGA_opts["max"] = 1
-    NSGA_opts["num_parents"] = population_size
-    NSGA_opts["num_generations"] = 50                                          # GOOD VALUE: 100 
-    NSGA_opts["mutation_prob"] = 0.3                                            # NOT TOUCH
-    NSGA_opts["crossover_prob"] = 0.5                                           # NOT TOUCH
+    # # Initialise the evolutionary algorithm
+    # world = AntWorld()
+    # n_parameters = world.n_params
+    # population_size = 30                                                       # GOOD VALUE: 30
+    # NSGA_opts["min"] = -1
+    # NSGA_opts["max"] = 1
+    # NSGA_opts["num_parents"] = population_size
+    # NSGA_opts["num_generations"] = 100                                          # GOOD VALUE: 100 
+    # NSGA_opts["mutation_prob"] = 0.3                                            # NOT TOUCH
+    # NSGA_opts["crossover_prob"] = 0.5                                           # NOT TOUCH
     results_dir = os.path.join(ROOT_DIR, 'results', ENV_NAME, 'multi')
-    ea_multi_obj = NSGAII(population_size, n_parameters, NSGA_opts, results_dir)
+    # ea_multi_obj = NSGAII(population_size, n_parameters, NSGA_opts, results_dir)
 
-    # Run the evolution
-    run_EA_multi(ea_multi_obj, world)
+    # # Run the evolution
+    # run_EA_multi(ea_multi_obj, world)
 
-    # Experiment finished
-    t_end = datetime.now()
-    print("Experiment took", t_end - t_start,"\n")
+    # # Experiment finished
+    # t_end = datetime.now()
+    # print("Experiment took", t_end - t_start,"\n")
 
-    # Plot the results
-    rocky_exp_plotting_results.create_figures(results_dir, NSGA_opts["num_generations"], population_size)
+    # # Plot the results
+    # rocky_exp_plotting_results.create_figures(results_dir, NSGA_opts["num_generations"], population_size)
 
-    # Generate the video of the best individual
-    # Choose individual for video
-    # target = np.array([117.5, -159])
-    # threshold = 5.0  # Set your desired tolerance
-    # distances = np.linalg.norm(np.load(os.path.join(results_dir, "full_f.npy")) - target, axis=-1)
-    # indices = np.argwhere(distances <= threshold)
-    # gen_ind = indices[0][0]
-    # ind = indices[0][1]
-    # genotypes_of_gen_ind = np.load(os.path.join(results_dir, f"{gen_ind}", "x.npy"))
-    # individual = genotypes_of_gen_ind[ind]
-
-    # Or best individual
-    individual = np.load(os.path.join(results_dir, f"{NSGA_opts['num_generations']-1}", "x_best.npy")) # best individual genotype    
-
+    # Visualize specific individual
+    target = np.array([1125, -10000])
+    threshold = 100  # Set your desired tolerance
+    distances = np.linalg.norm(np.load(os.path.join(results_dir, "full_f.npy")) - target, axis=-1)
+    indices = np.argwhere(distances <= threshold)
+    gen_ind = indices[0][0]
+    ind = indices[0][1]
+    genotypes_of_gen_ind = np.load(os.path.join(results_dir, f"{gen_ind}", "x.npy"))
+    individual = genotypes_of_gen_ind[ind]
     visualise_individual(individual)
-
 
 if __name__ == '__main__':
     main()

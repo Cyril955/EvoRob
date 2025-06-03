@@ -116,67 +116,91 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
 
 
     def step(self, action):
-
-        # Multi-reward function ---------------------------------------------------------------------------------------------------------------------------------------------
+        # Multi-reward function ----------------------------------------------------------------------------------------------------------------------------------------------
         xy_position_before = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_before = self.data.body(self._main_body).xpos[2].copy()
         if self.body_ids is not None:
             self.apply_force()
         self.do_simulation(action, self.frame_skip)
         xy_position_after = self.data.body(self._main_body).xpos[:2].copy()
+        z_position_after = self.data.body(self._main_body).xpos[2].copy()
         xy_velocity = (xy_position_after - xy_position_before) / self.dt
         x_velocity, y_velocity = xy_velocity
+        z_velocity = (z_position_after - z_position_before) / self.dt
 
-        forward_reward = abs(x_velocity) # worked well   
-        # forward_reward = (abs(x_velocity) - abs(y_velocity))* self._forward_reward_weight # not working
-        # x_target = 100
-        # y_target = 0
-        # forward_reward = - np.sqrt((self.data.qpos[0] - x_target)**2 + (self.data.qpos[1] - y_target)**2) # does f(x)=x
-
+        # forward_reward = abs(x_velocity)
+        forward_reward = np.sqrt(x_velocity**2 + z_velocity**2) # tilted case
         ctrl_cost = np.linalg.norm(action)**2
-
-        # def flipped_over(xquat, tol=5):
-        #     w, x, y, z = xquat
-
-        #     # Roll (X-axis rotation)
-        #     t0 = 2.0 * (w * x + y * z)
-        #     t1 = 1.0 - 2.0 * (x * x + y * y)
-        #     roll_rad = np.atan2(t0, t1)
-
-        #     # Pitch (Y-axis rotation)
-        #     t2 = 2.0 * (w * y - z * x)
-        #     t2 = max(-1.0, min(1.0, t2))  # clamp to avoid domain errors
-        #     pitch_rad = np.asin(t2)
-
-        #     # Yaw (Z-axis rotation)
-        #     t3 = 2.0 * (w * z + x * y)
-        #     t4 = 1.0 - 2.0 * (y * y + z * z)
-        #     yaw_rad = np.atan2(t3, t4)
-
-        #     # Convert to degrees
-        #     roll_deg  = np.degrees(roll_rad)
-        #     pitch_deg = np.degrees(pitch_rad)
-        #     yaw_deg   = np.degrees(yaw_rad)
-
-        #     #if roll_deg or pitch_deg or yaw_deg are < abs(120) return false else return true
-        #     if abs(roll_deg) > 180-tol or abs(pitch_deg) > 90 - tol:
-        #         # print("roll_deg: ", roll_deg)
-        #         # print("pitch_deg: ", pitch_deg)
-        #         # print("yaw_deg: ", yaw_deg)
-        #         return True
-        #     return False
-
-        # if (flipped_over(self.data.body(self._main_body).xquat)):     
-        #     ctrl_cost += 5 
-        #     forward_reward -= 1
-        # forward_reward = np.clip(forward_reward, 0, None)  # prevent negative rewards
-
         # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
-        
-        # Not used
+
+        # Not used ------------------------------------------------------------------------------------------------------------------------------------------------------------
         cfrc_cost = np.linalg.norm(self.data.cfrc_ext[1:])**2 * self._cfrc_cost_weight
         healthy_reward = 1
         reward = healthy_reward + forward_reward -ctrl_cost -cfrc_cost
+        # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+         # Termination --------------------------------------------------------------------------------------------------------------------------------------------------------
         observation = self._get_obs()
+        terminated = False
+
+        # Check for NaN, Inf, or huge values
+        qacc = self.data.qacc
+        if np.any(np.isnan(qacc)) or np.any(np.isinf(qacc)) or np.any(np.abs(qacc) > 1e6):
+            DOF = np.argwhere((np.isnan(qacc)) + (np.isinf(qacc)) + (np.abs(qacc) > 1e6)).squeeze()[0]
+            print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
+            terminated = True
+
+        # Check fo z-position
+        # if self.data.qpos[2] < 0.2 or self.data.qpos[2] > 1.0:
+        #     terminated = True
+
+        if self.data.qpos[2] < 0.2:
+            ctrl_cost += 10
+        
+        # Check if inf observation
+        if np.isinf(observation).any():
+            terminated = True
+
+        # Check if flipped over
+        def flipped_over(xquat, tol=5):
+            w, x, y, z = xquat
+
+            # Roll (X-axis rotation)
+            t0 = 2.0 * (w * x + y * z)
+            t1 = 1.0 - 2.0 * (x * x + y * y)
+            roll_rad = np.atan2(t0, t1)
+
+            # Pitch (Y-axis rotation)
+            t2 = 2.0 * (w * y - z * x)
+            t2 = max(-1.0, min(1.0, t2))  # clamp to avoid domain errors
+            pitch_rad = np.asin(t2)
+
+            # Yaw (Z-axis rotation)
+            t3 = 2.0 * (w * z + x * y)
+            t4 = 1.0 - 2.0 * (y * y + z * z)
+            yaw_rad = np.atan2(t3, t4)
+
+            # Convert to degrees
+            roll_deg  = np.degrees(roll_rad)
+            pitch_deg = np.degrees(pitch_rad)
+            yaw_deg   = np.degrees(yaw_rad)
+
+            #if roll_deg or pitch_deg or yaw_deg are < abs(120) return false else return true
+            if abs(roll_deg) > 180-tol or abs(pitch_deg) > 90 - tol:
+                # print("roll_deg: ", roll_deg)
+                # print("pitch_deg: ", pitch_deg)
+                # print("yaw_deg: ", yaw_deg)
+                return True
+            return False
+
+        if (flipped_over(self.data.body(self._main_body).xquat)):     
+            ctrl_cost += 10 
+
+        self.previous_state = observation
+
+        if self.render_mode == "human":
+            self.render()
+        # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         info = {
             "reward_forward": forward_reward,
@@ -189,24 +213,8 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
             "x_velocity": x_velocity,
             "y_velocity": y_velocity,
         }
-
-        terminated = False
-        # Check for NaN, Inf, or huge values
-        qacc = self.data.qacc
-        if np.any(np.isnan(qacc)) or np.any(np.isinf(qacc)) or np.any(np.abs(qacc) > 1e6):
-            DOF = np.argwhere((np.isnan(qacc)) + (np.isinf(qacc)) + (np.abs(qacc) > 1e6)).squeeze()[0]
-            print(ValueError(f'MuJoCo Warning: Nan, Inf or huge value in QACC at DOF {DOF}'))
-            terminated = True
-        if self.data.qpos[2] < 0.2 or self.data.qpos[2] > 1.0:
-            terminated = True
-        if np.isinf(observation).any():
-            terminated = True
-
-        self.previous_state = observation
-
-        if self.render_mode == "human":
-            self.render()
         return observation, reward, terminated, False, info
+
 
     def _get_obs(self):
         position = self.data.qpos.flat.copy()
@@ -243,6 +251,7 @@ class AntCustomEnv(MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         observation = self._get_obs()
         return observation
+
 
     def _get_reset_info(self):
         return {
